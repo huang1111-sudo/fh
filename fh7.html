@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>官方客服</title>
+    <style>
+        /* 重置样式 */
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body, html { height: 100%; overflow: hidden; }
+
+        /* 正常浏览的容器样式 */
+        .normal-container {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        iframe { width: 100%; height: 100%; border: none; }
+
+        /* 引导图容器样式（默认隐藏） */
+        .guide-container {
+            width: 100%;
+            height: 100%;
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 9999;
+            background-color: #fff;
+        }
+        .guide-img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* 图片全屏铺满，保持比例 */
+        }
+
+        /* 错误提示样式 */
+        .error-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            color: #ff3333;
+            padding: 20px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <!-- 错误提示容器（默认隐藏） -->
+    <div class="error-container" id="errorContainer" style="display: none;"></div>
+
+    <!-- 正常浏览器显示的容器 -->
+    <div class="normal-container" id="normalContainer">
+        <iframe id="mainIframe" sandbox="allow-same-origin allow-scripts allow-popups allow-forms"></iframe>
+    </div>
+
+    <!-- 微信/QQ环境显示的引导图容器 -->
+    <div class="guide-container" id="guideContainer">
+        <!-- 替换为你的引导图实际路径（比如 pic.jpg），确保图片和HTML文件同目录 -->
+        <img src="pic.jpg" class="guide-img" alt="请用浏览器打开">
+    </div>
+
+    <script>
+        // 配置项（可根据需要修改）
+        const CONFIG = {
+            linksMapUrl: 'https://huang1111-sudo.github.io/fh/proxy.php', // 链接映射文件地址
+            codeLength: 6 // 随机字符长度要求
+        };
+
+        // 1. 获取URL中的code参数
+        function getUrlParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name) ? urlParams.get(name).trim() : '';
+        }
+
+        // 2. 验证code格式（6位字母数字）
+        function validateCode(code) {
+            if (code.length !== CONFIG.codeLength) return false;
+            const reg = /^[a-zA-Z0-9]{6}$/;
+            return reg.test(code);
+        }
+
+        // 3. 验证URL是否有效
+        function isValidUrl(url) {
+            try {
+                new URL(url);
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        // 4. 读取并解析链接映射文件
+        async function getOriginalLink(code) {
+            try {
+                // 发起请求读取txt文件
+                const response = await fetch(CONFIG.linksMapUrl);
+                if (!response.ok) {
+                    throw new Error(`请求失败：${response.status}`);
+                }
+                const text = await response.text();
+                // 按行解析txt内容
+                const lines = text.split('\n').filter(line => line.trim() !== '');
+                // 遍历匹配code
+                for (const line of lines) {
+                    const parts = line.split(',', 2); // 只分割前2部分
+                    if (parts.length === 2 && parts[0].trim() === code) {
+                        const originalLink = parts[1].trim();
+                        if (isValidUrl(originalLink)) {
+                            return originalLink;
+                        }
+                    }
+                }
+                return ''; // 未找到匹配的链接
+            } catch (error) {
+                throw new Error(`读取链接文件失败：${error.message}`);
+            }
+        }
+
+        // 5. 检测是否是微信/QQ内置浏览器
+        function isWechatOrQQ() {
+            const ua = navigator.userAgent.toLowerCase();
+            // 匹配微信内置浏览器
+            const isWechat = /micromessenger/.test(ua);
+            // 匹配QQ内置浏览器（包含QQ、QQ浏览器内置版）
+            const isQQ = /qq\/|qzone\/|qqbrowser/.test(ua) && !/mqqbrowser\/.* chrome\/.*/.test(ua);
+            return isWechat || isQQ;
+        }
+
+        // 6. 显示错误提示
+        function showError(message) {
+            const errorContainer = document.getElementById('errorContainer');
+            const normalContainer = document.getElementById('normalContainer');
+            errorContainer.textContent = message;
+            errorContainer.style.display = 'flex';
+            normalContainer.style.display = 'none';
+        }
+
+        // 7. 初始化页面
+        async function init() {
+            // 先检测微信/QQ环境
+            if (isWechatOrQQ()) {
+                document.getElementById('normalContainer').style.display = 'none';
+                document.getElementById('guideContainer').style.display = 'block';
+                return; // 微信/QQ环境直接显示引导图，无需后续逻辑
+            }
+
+            // 获取并验证code参数
+            const code = getUrlParam('code');
+            if (!validateCode(code)) {
+                showError('无效的访问链接：随机字符格式错误（必须是6位字母数字）');
+                return;
+            }
+
+            // 读取并匹配原始链接
+            try {
+                const originalLink = await getOriginalLink(code);
+                if (!originalLink) {
+                    showError('未找到有效的目标链接');
+                    return;
+                }
+                // 设置iframe的src（防止XSS）
+                document.getElementById('mainIframe').setAttribute('src', originalLink);
+            } catch (error) {
+                showError(error.message);
+            }
+        }
+
+        // 页面加载完成后执行初始化
+        window.onload = init;
+    </script>
+</body>
+</html>
